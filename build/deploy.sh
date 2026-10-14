@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Deploy to Fasthosts (CentOS 7) by pulling from GitHub on the server.
-# Push your commits first; this only tells the server to fetch them.
+# Deploy to Fasthosts by pushing with git over SSH.
+#
+# Fasthosts shared hosting has no outbound internet (it can't reach github.com), so the server
+# can't pull. Instead this pushes your local branch to a bare repo on the server, and a
+# post-receive hook checks it out into the web root.
 #
 # Usage:
-#   ./build/deploy.sh   (asks for the SSH password)
+#   ./build/deploy.sh   (asks for the SSH password once)
 #
 # Optional env:
 #   SSH_HOST    (default ssh.buypropertyinuk.co.uk)
@@ -13,40 +16,46 @@
 #   BRANCH      (default main)
 set -euo pipefail
 
-REPO="https://github.com/atikhashmee/buypropertyinuk.git"
+SSH_HOST="${SSH_HOST:-ssh.buypropertyinuk.co.uk}"
 SSH_USER="${SSH_USER:-csh3483715}"
 SSH_PORT="${SSH_PORT:-1022}"  # Fasthosts: 22 is interactive-only, scripted commands must use 1022
 REMOTE_DIR="${REMOTE_DIR:-htdocs}"
 BRANCH="${BRANCH:-main}"
-SSH_HOST="${SSH_HOST:-ssh.buypropertyinuk.co.uk}"
+BARE_REPO="buypropertyinuk.git"  # lives in the home directory, outside the web root
 
-# Warn if what's about to deploy isn't what's on this machine.
 cd "$(dirname "$0")/.."
 if [ -n "$(git status --porcelain)" ]; then
   echo "Warning: uncommitted local changes will not be deployed." >&2
 fi
-git fetch -q origin "$BRANCH"
-if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$BRANCH")" ]; then
-  echo "Warning: local HEAD differs from origin/$BRANCH. Push first if you want it live." >&2
-fi
 
-# Runs on the server. Written for git 1.8 (CentOS 7): no `git -C`, no `init -b`.
-ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s -- "$REPO" "$BRANCH" "$REMOTE_DIR" <<'REMOTE'
+# One shared SSH connection for setup and push, so the password is typed once.
+SOCKET="$(mktemp -u /tmp/deploy-ssh.XXXXXX)"
+SSH_CMD="ssh -p $SSH_PORT -o ControlPath=$SOCKET"
+$SSH_CMD -o ControlMaster=yes -o ControlPersist=120 -fN "$SSH_USER@$SSH_HOST"
+trap '$SSH_CMD -O exit "$SSH_USER@$SSH_HOST" 2>/dev/null || true' EXIT
+
+# Server setup, safe to repeat. Written for git 1.8 (CentOS 7).
+$SSH_CMD "$SSH_USER@$SSH_HOST" bash -s -- "$BARE_REPO" "$REMOTE_DIR" "$BRANCH" <<'REMOTE'
 set -euo pipefail
-REPO="$1"; BRANCH="$2"; DIR="$3"
-mkdir -p "$DIR" && cd "$DIR"
+REPO="$HOME/$1"; WEB="$HOME/$2"; BRANCH="$3"
 
-if [ ! -d .git ]; then
-  # First deploy: htdocs may already hold Fasthosts' placeholder page, so init in place instead of cloning.
-  echo "First deploy: initialising $DIR from $REPO"
-  git init -q
-  git remote add origin "$REPO"
-  git fetch -q origin "$BRANCH"
-  git checkout -q -f -B "$BRANCH" "origin/$BRANCH"
-else
-  # --ff-only refuses to deploy if someone edited files on the server, instead of overwriting them.
-  git pull -q --ff-only origin "$BRANCH"
+[ -d "$REPO" ] || git init -q --bare "$REPO"
+mkdir -p "$WEB"
+
+# Remove the empty repo left in the web root by the earlier pull-based attempt (only if it has no commits).
+if [ -d "$WEB/.git" ] && ! git --git-dir="$WEB/.git" rev-parse -q --verify HEAD >/dev/null; then
+  rm -rf "$WEB/.git"
 fi
 
-echo "Live: $(git log -1 --format='%h %s (%cr)')"
+cat > "$REPO/hooks/post-receive" <<HOOK
+#!/bin/bash
+while read old new ref; do
+  [ "\$ref" = "refs/heads/$BRANCH" ] || continue
+  git --git-dir="$REPO" --work-tree="$WEB" checkout -q -f "$BRANCH"
+  echo "Live: \$(git --git-dir="$REPO" log -1 --format='%h %s (%cr)' "$BRANCH")"
+done
+HOOK
+chmod +x "$REPO/hooks/post-receive"
 REMOTE
+
+GIT_SSH_COMMAND="$SSH_CMD" git push "ssh://$SSH_USER@$SSH_HOST:$SSH_PORT/~/$BARE_REPO" "$BRANCH:$BRANCH"
