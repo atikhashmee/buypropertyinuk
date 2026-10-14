@@ -8,14 +8,14 @@
 # Optional env:
 #   SSH_HOST    (default ssh.buypropertyinuk.co.uk)
 #   SSH_USER    (default csh3483715)
-#   SSH_PORT    (default 22)
+#   SSH_PORT    (default 1022)
 #   REMOTE_DIR  (default htdocs, relative to your home directory; the Fasthosts web root)
 #   BRANCH      (default main)
 set -euo pipefail
 
 REPO="https://github.com/atikhashmee/buypropertyinuk.git"
 SSH_USER="${SSH_USER:-csh3483715}"
-SSH_PORT="${SSH_PORT:-22}"
+SSH_PORT="${SSH_PORT:-1022}"  # Fasthosts: 22 is interactive-only, scripted commands must use 1022
 REMOTE_DIR="${REMOTE_DIR:-htdocs}"
 BRANCH="${BRANCH:-main}"
 SSH_HOST="${SSH_HOST:-ssh.buypropertyinuk.co.uk}"
