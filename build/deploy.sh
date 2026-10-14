@@ -3,9 +3,10 @@
 # Push your commits first; this only tells the server to fetch them.
 #
 # Usage:
-#   SSH_HOST=ssh.yourdomain.co.uk ./build/deploy.sh
+#   ./build/deploy.sh   (asks for the SSH password)
 #
 # Optional env:
+#   SSH_HOST    (default ssh.buypropertyinuk.co.uk)
 #   SSH_USER    (default csh3483715)
 #   SSH_PORT    (default 22)
 #   REMOTE_DIR  (default htdocs, relative to your home directory; the Fasthosts web root)
@@ -17,7 +18,7 @@ SSH_USER="${SSH_USER:-csh3483715}"
 SSH_PORT="${SSH_PORT:-22}"
 REMOTE_DIR="${REMOTE_DIR:-htdocs}"
 BRANCH="${BRANCH:-main}"
-: "${SSH_HOST:?Set SSH_HOST to the SSH server shown in your Fasthosts control panel}"
+SSH_HOST="${SSH_HOST:-ssh.buypropertyinuk.co.uk}"
 
 # Warn if what's about to deploy isn't what's on this machine.
 cd "$(dirname "$0")/.."
