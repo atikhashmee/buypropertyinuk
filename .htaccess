@@ -1,0 +1,3 @@
+# The site is deployed with git pull into htdocs, so keep the repo internals and server scripts off the web.
+RedirectMatch 404 /\.git
+RedirectMatch 404 ^/build(/|$)
